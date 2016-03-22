@@ -438,14 +438,17 @@ SOURCE = \
 	$(SRCDIR)/pi/pi_controller.c \
 	$(SRCDIR)/pi/sram.c \
 	$(SRCDIR)/plugin/emulate_game_controller_via_input_plugin.c \
+	$(SRCDIR)/plugin/emulate_game_controller_via_netplay_plugin.c \
 	$(SRCDIR)/plugin/emulate_speaker_via_audio_plugin.c \
 	$(SRCDIR)/plugin/get_time_using_C_localtime.c \
 	$(SRCDIR)/plugin/rumble_via_input_plugin.c \
 	$(SRCDIR)/plugin/plugin.c \
+	$(SRCDIR)/plugin/netplay.c \
 	$(SRCDIR)/plugin/dummy_video.c \
 	$(SRCDIR)/plugin/dummy_audio.c \
 	$(SRCDIR)/plugin/dummy_input.c \
 	$(SRCDIR)/plugin/dummy_rsp.c \
+	$(SRCDIR)/plugin/dummy_netplay.c \
 	$(SRCDIR)/r4300/r4300.c \
 	$(SRCDIR)/r4300/cached_interp.c \
 	$(SRCDIR)/r4300/cp0.c \

@@ -25,6 +25,8 @@
 
 #include "m64p_types.h"
 
+#include <stdlib.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -159,6 +161,31 @@ typedef struct {
                                CONTROL Controls[4]; */
 } CONTROL_INFO;
 
+typedef struct {
+    int Present;
+    int Remote;
+    int Delay;
+    // Make this pointer-sized so it can be stored in a void*
+    uintptr_t Channel;
+    // Pointer to the CONTROL structure for this channel, or NULL if the 
+    // controller is disconnected or remote.
+    CONTROL* Control;
+} NETPLAY_CONTROLLER;
+
+typedef struct {
+    int * Enabled;
+    // Pointer to an array of 4 input plugin controllers.
+    CONTROL* Controls;
+    // Pointer to an array of 4 netplay plugin controllers.
+    NETPLAY_CONTROLLER *NetplayControls;
+} NETPLAY_INFO;
+
+typedef struct {
+  int port;
+  int frame;
+  BUTTONS* buttons;
+} m64p_netplay_frame_update;
+
 /* common plugin function pointer types */
 typedef void (*ptr_RomClosed)(void);
 typedef int  (*ptr_RomOpen)(void);
@@ -264,10 +291,18 @@ EXPORT unsigned int CALL DoRspCycles(unsigned int Cycles);
 EXPORT void CALL InitiateRSP(RSP_INFO Rsp_Info, unsigned int *CycleCount);
 #endif
 
+/* netplay plugin function pointers */
+typedef int (*ptr_InitiateNetplay)(NETPLAY_INFO* netplay_info);
+typedef int (*ptr_Netplay_PutKeys)(const m64p_netplay_frame_update *updates, int nupdates);
+typedef int (*ptr_Netplay_GetKeys)(m64p_netplay_frame_update* update);
+#if defined(M64P_PLUGIN_PROTOTYPES)
+EXPORT int CALL InitiateNetplay(NETPLAY_INFO* netplay_info);
+EXPORT int CALL Netplay_PutKeys(const m64p_netplay_frame_update *updates, int nupdates);
+EXPORT int CALL Netplay_GetKeys(m64p_netplay_frame_update *update);
+#endif
+
 #ifdef __cplusplus
 }
 #endif
 
 #endif /* M64P_PLUGIN_H */
-
-

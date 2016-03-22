@@ -31,13 +31,18 @@ extern m64p_error plugin_connect(m64p_plugin_type, m64p_dynlib_handle plugin_han
 extern m64p_error plugin_start(m64p_plugin_type);
 extern m64p_error plugin_check(void);
 
+// Keyed by the number of the input device.
 extern CONTROL Controls[4];
 
+// Keyed by the allocated netplay port.
+extern NETPLAY_CONTROLLER NetplayControls[4];
+
 /*** Version requirement information ***/
-#define RSP_API_VERSION   0x20000
-#define GFX_API_VERSION   0x20200
-#define AUDIO_API_VERSION 0x20000
-#define INPUT_API_VERSION 0x20001
+#define RSP_API_VERSION     0x20000
+#define GFX_API_VERSION     0x20200
+#define AUDIO_API_VERSION   0x20000
+#define INPUT_API_VERSION   0x20001
+#define NETPLAY_API_VERSION 0x20000
 
 /* video plugin function pointers */
 typedef struct _gfx_plugin_functions
@@ -114,6 +119,19 @@ typedef struct _rsp_plugin_functions
 } rsp_plugin_functions;
 
 extern rsp_plugin_functions rsp;
+
+/* netplay plugin function pointers */
+typedef struct _netplay_plugin_functions
+{
+  ptr_PluginGetVersion    getVersion;
+  ptr_RomOpen             romOpen;
+  ptr_RomClosed           romClosed;
+  ptr_InitiateNetplay     initiateNetplay;
+  ptr_Netplay_PutKeys     putKeys;
+  ptr_Netplay_GetKeys     getKeys;
+} netplay_plugin_functions;
+
+extern netplay_plugin_functions netplay;
 
 #endif
 

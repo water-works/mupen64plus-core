@@ -56,9 +56,12 @@
 #include "osd/osd.h"
 #include "osd/screenshot.h"
 #include "pi/pi_controller.h"
+#include "plugin/emulate_game_controller_via_netplay_plugin.h"
 #include "plugin/emulate_game_controller_via_input_plugin.h"
+#include "plugin/emulate_game_controller_via_netplay_plugin.h"
 #include "plugin/emulate_speaker_via_audio_plugin.h"
 #include "plugin/get_time_using_C_localtime.h"
+#include "plugin/netplay.h"
 #include "plugin/plugin.h"
 #include "plugin/rumble_via_input_plugin.h"
 #include "profile.h"
@@ -912,6 +915,9 @@ m64p_error main_run(void)
     {
         audio.romClosed(); gfx.romClosed(); return M64ERR_PLUGIN_FAIL;
     }
+    if (!netplay.romOpen()) {
+      netplay.romClosed(); return M64ERR_PLUGIN_FAIL;
+    }
 
     /* set up the SDL key repeat and event filter to catch keyboard/joystick commands for the core */
     event_initialize();
@@ -937,12 +943,19 @@ m64p_error main_run(void)
     g_si.pif.af_rtc.user_data = NULL;
     g_si.pif.af_rtc.get_time = get_time_using_C_localtime;
 
+    /* remap the channels depending on the ports allocated by the netplay server */
+
     /* connect external game controllers */
     for(i = 0; i < GAME_CONTROLLERS_COUNT; ++i)
     {
         g_si.pif.controllers[i].user_data = &channels[i];
-        g_si.pif.controllers[i].is_connected = egcvip_is_connected;
-        g_si.pif.controllers[i].get_input = egcvip_get_input;
+        if (netplay_enabled) {
+            g_si.pif.controllers[i].is_connected = egcvnp_is_connected;
+            g_si.pif.controllers[i].get_input = egcvnp_get_input;
+        } else {
+            g_si.pif.controllers[i].is_connected = egcvip_is_connected;
+            g_si.pif.controllers[i].get_input = egcvip_get_input;
+        }
     }
 
     /* connect external rumblepaks */

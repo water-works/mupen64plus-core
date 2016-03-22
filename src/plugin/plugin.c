@@ -30,6 +30,7 @@
 #include "api/m64p_types.h"
 #include "dummy_audio.h"
 #include "dummy_input.h"
+#include "dummy_netplay.h"
 #include "dummy_rsp.h"
 #include "dummy_video.h"
 #include "main/main.h"
@@ -38,18 +39,21 @@
 #include "memory/memory.h"
 #include "osal/dynamiclib.h"
 #include "plugin.h"
+#include "netplay.h"
 #include "r4300/r4300_core.h"
 #include "rdp/rdp_core.h"
 #include "rsp/rsp_core.h"
 #include "vi/vi_controller.h"
 
 CONTROL Controls[4];
+NETPLAY_CONTROLLER NetplayControls[4];
 
 /* global function pointers - initialized on core startup */
 gfx_plugin_functions gfx;
 audio_plugin_functions audio;
 input_plugin_functions input;
 rsp_plugin_functions rsp;
+netplay_plugin_functions netplay;
 
 /* local data structures and functions */
 static const gfx_plugin_functions dummy_gfx = {
@@ -109,15 +113,26 @@ static const rsp_plugin_functions dummy_rsp = {
     dummyrsp_RomClosed
 };
 
+static const netplay_plugin_functions dummy_netplay = {
+    dummynetplay_PluginGetVersion,
+    dummynetplay_RomOpen,
+    dummynetplay_RomClosed,
+    dummynetplay_InitiateNetplay,
+    dummynetplay_Netplay_PutKeys,
+    dummynetplay_Netplay_GetKeys
+};
+
 static GFX_INFO gfx_info;
 static AUDIO_INFO audio_info;
 static CONTROL_INFO control_info;
 static RSP_INFO rsp_info;
+static NETPLAY_INFO netplay_info;
 
 static int l_RspAttached = 0;
 static int l_InputAttached = 0;
 static int l_AudioAttached = 0;
 static int l_GfxAttached = 0;
+static int l_NetplayAttached = 0;
 
 static unsigned int dummy;
 
@@ -463,6 +478,51 @@ static m64p_error plugin_connect_rsp(m64p_dynlib_handle plugin_handle)
     return M64ERR_SUCCESS;
 }
 
+static void plugin_disconnect_netplay(void)
+{
+    netplay = dummy_netplay;
+    l_NetplayAttached = 0;
+}
+
+static m64p_error plugin_connect_netplay(m64p_dynlib_handle plugin_handle)
+{
+    if (plugin_handle != NULL)
+    {
+        m64p_plugin_type PluginType;
+
+        if (l_NetplayAttached)
+          return M64ERR_INPUT_INVALID;
+
+        if (!GET_FUNC(ptr_PluginGetVersion, netplay.getVersion, "PluginGetVersion") ||
+            !GET_FUNC(ptr_RomOpen, netplay.romOpen, "RomOpen") ||
+            !GET_FUNC(ptr_RomClosed, netplay.romClosed, "RomClosed") ||
+            !GET_FUNC(ptr_InitiateNetplay, netplay.initiateNetplay, "InitiateNetplay") ||
+            !GET_FUNC(ptr_Netplay_PutKeys, netplay.putKeys, "PutKeys") ||
+            !GET_FUNC(ptr_Netplay_GetKeys, netplay.getKeys, "GetKeys"))
+        {
+            DebugMessage(M64MSG_ERROR, "Broken Netplay plugin; function(s) not found");
+            plugin_disconnect_netplay();
+            return M64ERR_INPUT_INVALID;
+        }
+
+        (*netplay.getVersion)(&PluginType, NULL, NULL, NULL, NULL);
+        if (PluginType != M64PLUGIN_NETPLAY)
+        {
+            DebugMessage(M64MSG_ERROR, "Plugin declared itself with a non-netplay plugin type");
+            plugin_disconnect_netplay();
+            return M64ERR_INCOMPATIBLE;
+        }
+
+        l_NetplayAttached = 1;
+    }
+    else
+    {
+        plugin_disconnect_netplay();
+    }
+
+    return M64ERR_SUCCESS;
+}
+
 static m64p_error plugin_start_rsp(void)
 {
     /* fill in the RSP_INFO data structure */
@@ -499,6 +559,20 @@ static m64p_error plugin_start_rsp(void)
     return M64ERR_SUCCESS;
 }
 
+static m64p_error plugin_start_netplay(void)
+{
+    // TODO(alexgolec): Implement plugin_start_netplay
+    netplay_info.Enabled = &netplay_enabled;
+    netplay_info.Controls = Controls;
+    netplay_info.NetplayControls = NetplayControls;
+
+    if (!netplay.initiateNetplay(&netplay_info)) {
+      return M64ERR_PLUGIN_FAIL;
+    }
+
+    return M64ERR_SUCCESS;
+}
+
 /* global functions */
 m64p_error plugin_connect(m64p_plugin_type type, m64p_dynlib_handle plugin_handle)
 {
@@ -518,6 +592,8 @@ m64p_error plugin_connect(m64p_plugin_type type, m64p_dynlib_handle plugin_handl
             return plugin_connect_input(plugin_handle);
         case M64PLUGIN_RSP:
             return plugin_connect_rsp(plugin_handle);
+        case M64PLUGIN_NETPLAY:
+            return plugin_connect_netplay(plugin_handle);
         default:
             return M64ERR_INPUT_INVALID;
     }
@@ -537,6 +613,8 @@ m64p_error plugin_start(m64p_plugin_type type)
             return plugin_start_audio();
         case M64PLUGIN_INPUT:
             return plugin_start_input();
+        case M64PLUGIN_NETPLAY:
+            return plugin_start_netplay();
         default:
             return M64ERR_INPUT_INVALID;
     }
@@ -554,7 +632,8 @@ m64p_error plugin_check(void)
         DebugMessage(M64MSG_WARNING, "No audio plugin attached.  There will be no sound output.");
     if (!l_InputAttached)
         DebugMessage(M64MSG_WARNING, "No input plugin attached.  You won't be able to control the game.");
+    if (!l_NetplayAttached)
+      DebugMessage(M64MSG_WARNING, "No netplay plugin attached.  Network functionality will not work.");
 
     return M64ERR_SUCCESS;
 }
-

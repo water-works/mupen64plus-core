@@ -29,6 +29,7 @@
 #include "api/m64p_types.h"
 #include "memory/memory.h"
 #include "n64_cic_nus_6105.h"
+#include "plugin/netplay.h"
 #include "plugin/plugin.h"
 #include "r4300/r4300_core.h"
 #include "si_controller.h"
@@ -226,10 +227,16 @@ void update_pif_read(struct si_controller* si)
             {
                 if (channel < 4)
                 {
-                    if (Controls[channel].Present && Controls[channel].RawData)
-                        input.readController(channel, &pif->ram[i]);
-                    else
-                        read_controller(&pif->controllers[channel], &pif->ram[i]);
+                    if (netplay_enabled) {
+                        if (NetplayControls[channel].Present) {
+                            read_controller(&pif->controllers[channel], &pif->ram[i]);
+                        }
+                    } else {
+                        if (Controls[channel].Present && Controls[channel].RawData)
+                            input.readController(channel, &pif->ram[i]);
+                        else
+                            read_controller(&pif->controllers[channel], &pif->ram[i]);
+                    }
                 }
 
                 i += pif->ram[i] + (pif->ram[(i+1)] & 0x3F) + 1;
@@ -244,4 +251,3 @@ void update_pif_read(struct si_controller* si)
     /* notify the INPUT plugin that we're at the end of PIF ram processing */
     input.readController(-1, NULL);
 }
-
