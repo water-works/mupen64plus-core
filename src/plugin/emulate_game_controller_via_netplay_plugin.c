@@ -1,6 +1,7 @@
 #include "emulate_game_controller_via_netplay_plugin.h"
 
 #include "api/callbacks.h"
+#include "main/main.h"
 #include "plugin/netplay.h"
 #include "plugin/plugin.h"
 
@@ -59,6 +60,7 @@ static inline void refresh_button_cache() {
 
   if (n_updates > 0 && !netplay.putKeys(updates, n_updates)) {
     DebugMessage(M64MSG_ERROR, "Netplay PutKeys failed");
+    main_stop();
   }
 
   // Extract the button values from the netplay plugin.
@@ -71,6 +73,7 @@ static inline void refresh_button_cache() {
 
       if (!netplay.getKeys(&update)) {
         DebugMessage(M64MSG_ERROR, "Netplay GetKeys failed");
+        main_stop();
       }
     }
   }
