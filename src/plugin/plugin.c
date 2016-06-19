@@ -566,7 +566,8 @@ static m64p_error plugin_start_netplay(void)
     netplay_info.Controls = Controls;
     netplay_info.NetplayControls = NetplayControls;
 
-    if (!netplay.initiateNetplay(&netplay_info)) {
+    if (!netplay.initiateNetplay(&netplay_info, ROM_SETTINGS.goodname,
+                                 ROM_SETTINGS.MD5)) {
       return M64ERR_PLUGIN_FAIL;
     }
 

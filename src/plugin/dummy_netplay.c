@@ -27,8 +27,8 @@ int dummynetplay_RomOpen(void) { return 1; }
 
 void dummynetplay_RomClosed(void) {}
 
-int dummynetplay_InitiateNetplay(NETPLAY_INFO* netplay_info)
-{
+int dummynetplay_InitiateNetplay(NETPLAY_INFO *netplay_info,
+                                 const char *goodname, const char *md5) {
   return 0;
 }
 

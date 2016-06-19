@@ -292,11 +292,13 @@ EXPORT void CALL InitiateRSP(RSP_INFO Rsp_Info, unsigned int *CycleCount);
 #endif
 
 /* netplay plugin function pointers */
-typedef int (*ptr_InitiateNetplay)(NETPLAY_INFO* netplay_info);
+typedef int (*ptr_InitiateNetplay)(NETPLAY_INFO *netplay_info,
+                                   const char *goodname, const char *md5);
 typedef int (*ptr_Netplay_PutKeys)(const m64p_netplay_frame_update *updates, int nupdates);
 typedef int (*ptr_Netplay_GetKeys)(m64p_netplay_frame_update* update);
 #if defined(M64P_PLUGIN_PROTOTYPES)
-EXPORT int CALL InitiateNetplay(NETPLAY_INFO* netplay_info);
+EXPORT int CALL InitiateNetplay(NETPLAY_INFO *netplay_info,
+                                const char *goodname, const char *md5);
 EXPORT int CALL Netplay_PutKeys(const m64p_netplay_frame_update *updates, int nupdates);
 EXPORT int CALL Netplay_GetKeys(m64p_netplay_frame_update *update);
 #endif
