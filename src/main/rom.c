@@ -35,18 +35,24 @@
 #include "api/config.h"
 #include "api/m64p_config.h"
 #include "api/m64p_types.h"
+#include "device/memory/memory.h"
 #include "main.h"
 #include "md5.h"
-#include "memory/memory.h"
 #include "osal/preproc.h"
 #include "osd/osd.h"
-#include "r4300/r4300.h"
 #include "rom.h"
 #include "util.h"
 
-#define DEFAULT 16
-
 #define CHUNKSIZE 1024*128 /* Read files 128KB at a time. */
+
+/* Amount of cpu cycles per vi scanline - empirically determined */
+enum { DEFAULT_COUNT_PER_SCANLINE = 1500 };
+/* Number of cpu cycles per instruction */
+enum { DEFAULT_COUNT_PER_OP = 2 };
+/* by default, alternate VI timing is disabled */
+enum { DEFAULT_ALTERNATE_VI_TIMING = 0 };
+/* by default, fixed audio position is disabled */
+enum { DEFAULT_FIXED_AUDIO_POS = 0 };
 
 static romdatabase_entry* ini_search_by_md5(md5_byte_t* md5);
 
@@ -56,7 +62,6 @@ static _romdatabase g_romdatabase;
 unsigned char* g_rom = NULL;
 /* Global loaded rom size. */
 int g_rom_size = 0;
-
 unsigned char isGoldeneyeRom = 0;
 
 m64p_rom_header   ROM_HEADER;
@@ -64,8 +69,6 @@ rom_params        ROM_PARAMS;
 m64p_rom_settings ROM_SETTINGS;
 
 static m64p_system_type rom_country_code_to_system_type(uint16_t country_code);
-static int rom_system_type_to_ai_dac_rate(m64p_system_type system_type);
-static int rom_system_type_to_vi_limit(m64p_system_type system_type);
 
 static const uint8_t Z64_SIGNATURE[4] = { 0x80, 0x37, 0x12, 0x40 };
 static const uint8_t V64_SIGNATURE[4] = { 0x37, 0x80, 0x40, 0x12 };
@@ -174,9 +177,10 @@ m64p_error open_rom(const unsigned char* romimage, unsigned int size)
 
     /* add some useful properties to ROM_PARAMS */
     ROM_PARAMS.systemtype = rom_country_code_to_system_type(ROM_HEADER.Country_code);
-    ROM_PARAMS.vilimit = rom_system_type_to_vi_limit(ROM_PARAMS.systemtype);
-    ROM_PARAMS.aidacrate = rom_system_type_to_ai_dac_rate(ROM_PARAMS.systemtype);
-    ROM_PARAMS.countperop = COUNT_PER_OP_DEFAULT;
+    ROM_PARAMS.countperop = DEFAULT_COUNT_PER_OP;
+    ROM_PARAMS.vitiming = DEFAULT_ALTERNATE_VI_TIMING;
+    ROM_PARAMS.fixedaudiopos = DEFAULT_FIXED_AUDIO_POS;
+    ROM_PARAMS.countperscanline = DEFAULT_COUNT_PER_SCANLINE;
     ROM_PARAMS.cheats = NULL;
 
     memcpy(ROM_PARAMS.headername, ROM_HEADER.Name, 20);
@@ -194,6 +198,9 @@ m64p_error open_rom(const unsigned char* romimage, unsigned int size)
         ROM_SETTINGS.players = entry->players;
         ROM_SETTINGS.rumble = entry->rumble;
         ROM_PARAMS.countperop = entry->countperop;
+        ROM_PARAMS.vitiming = entry->alternate_vi_timing;
+        ROM_PARAMS.fixedaudiopos = entry->fixed_audio_pos;
+        ROM_PARAMS.countperscanline = entry->count_per_scanline;
         ROM_PARAMS.cheats = entry->cheats;
     }
     else
@@ -204,7 +211,10 @@ m64p_error open_rom(const unsigned char* romimage, unsigned int size)
         ROM_SETTINGS.status = 0;
         ROM_SETTINGS.players = 0;
         ROM_SETTINGS.rumble = 0;
-        ROM_PARAMS.countperop = COUNT_PER_OP_DEFAULT;
+        ROM_PARAMS.countperop = DEFAULT_COUNT_PER_OP;
+        ROM_PARAMS.vitiming = DEFAULT_ALTERNATE_VI_TIMING;
+        ROM_PARAMS.fixedaudiopos = DEFAULT_FIXED_AUDIO_POS;
+        ROM_PARAMS.countperscanline = DEFAULT_COUNT_PER_SCANLINE;
         ROM_PARAMS.cheats = NULL;
     }
 
@@ -213,7 +223,7 @@ m64p_error open_rom(const unsigned char* romimage, unsigned int size)
     DebugMessage(M64MSG_INFO, "Name: %s", ROM_HEADER.Name);
     imagestring(imagetype, buffer);
     DebugMessage(M64MSG_INFO, "MD5: %s", ROM_SETTINGS.MD5);
-    DebugMessage(M64MSG_INFO, "CRC: %" PRIX32 " %" PRIX32, sl(ROM_HEADER.CRC1), sl(ROM_HEADER.CRC2));
+    DebugMessage(M64MSG_INFO, "CRC: %08" PRIX32 " %08" PRIX32, sl(ROM_HEADER.CRC1), sl(ROM_HEADER.CRC2));
     DebugMessage(M64MSG_INFO, "Imagetype: %s", buffer);
     DebugMessage(M64MSG_INFO, "Rom size: %d bytes (or %d Mb or %d Megabits)", g_rom_size, g_rom_size/1024/1024, g_rom_size/1024/1024*8);
     DebugMessage(M64MSG_VERBOSE, "ClockRate = %" PRIX32, sl(ROM_HEADER.ClockRate));
@@ -277,35 +287,6 @@ static m64p_system_type rom_country_code_to_system_type(uint16_t country_code)
         case 0x4a:
         default: // Fallback for unknown codes
             return SYSTEM_NTSC;
-    }
-}
-
-// Get the VI (vertical interrupt) limit associated to a ROM system type.
-static int rom_system_type_to_vi_limit(m64p_system_type system_type)
-{
-    switch (system_type)
-    {
-        case SYSTEM_PAL:
-        case SYSTEM_MPAL:
-            return 50;
-
-        case SYSTEM_NTSC:
-        default:
-            return 60;
-    }
-}
-
-static int rom_system_type_to_ai_dac_rate(m64p_system_type system_type)
-{
-    switch (system_type)
-    {
-        case SYSTEM_PAL:
-            return 49656530;
-        case SYSTEM_MPAL:
-            return 48628316;
-        case SYSTEM_NTSC:
-        default:
-            return 48681812;
     }
 }
 
@@ -457,9 +438,11 @@ void romdatabase_open(void)
                 continue;
             }
 
-            *next_search = (romdatabase_search*)malloc(sizeof(romdatabase_search));
+            *next_search = (romdatabase_search*) malloc(sizeof(romdatabase_search));
             search = *next_search;
             next_search = &search->next_entry;
+
+            memset(search, 0, sizeof(romdatabase_search));
 
             search->entry.goodname = NULL;
             memcpy(search->entry.md5, md5, 16);
@@ -467,10 +450,13 @@ void romdatabase_open(void)
             search->entry.crc1 = 0;
             search->entry.crc2 = 0;
             search->entry.status = 0; /* Set default to 0 stars. */
-            search->entry.savetype = DEFAULT;
-            search->entry.players = DEFAULT;
-            search->entry.rumble = DEFAULT; 
-            search->entry.countperop = COUNT_PER_OP_DEFAULT;
+            search->entry.savetype = 0;
+            search->entry.players = 0;
+            search->entry.rumble = 0;
+            search->entry.countperop = DEFAULT_COUNT_PER_OP;
+            search->entry.alternate_vi_timing = DEFAULT_ALTERNATE_VI_TIMING;
+            search->entry.fixed_audio_pos = DEFAULT_FIXED_AUDIO_POS;
+            search->entry.count_per_scanline = DEFAULT_COUNT_PER_SCANLINE;
             search->entry.cheats = NULL;
             search->entry.set_flags = ROMDATABASE_ENTRY_NONE;
 
@@ -513,6 +499,20 @@ void romdatabase_open(void)
                     search->entry.crc1 = search->entry.crc2 = 0;
                     DebugMessage(M64MSG_WARNING, "ROM Database: Invalid CRC on line %i", lineno);
                 }
+            }
+            else if(!strcmp(l.name, "ViTiming"))
+            {
+                if(!strcmp(l.value, "Alternate")) {
+                    search->entry.alternate_vi_timing = 1;
+                }
+            }
+            else if(!strcmp(l.name, "FixedAudioPos"))
+            {
+                search->entry.fixed_audio_pos = atoi(l.value);
+            }
+            else if(!strcmp(l.name, "CountPerScanline"))
+            {
+                search->entry.count_per_scanline = atoi(l.value);
             }
             else if(!strcmp(l.name, "RefMD5"))
             {

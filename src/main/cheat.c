@@ -22,8 +22,10 @@
 
 // gameshark and xploder64 reference: http://doc.kodewerx.net/hacking_n64.html 
 
+#ifdef USE_SDL
 #include <SDL.h>
 #include <SDL_thread.h>
+#endif
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -32,13 +34,13 @@
 #include "api/callbacks.h"
 #include "api/config.h"
 #include "api/m64p_types.h"
+#include "device/memory/memory.h"
+#include "device/r4300/r4300_core.h"
 #include "cheat.h"
 #include "eventloop.h"
 #include "list.h"
 #include "main.h"
-#include "memory/memory.h"
 #include "osal/preproc.h"
-#include "r4300/r4300_core.h"
 #include "rom.h"
 
 #define __STDC_FORMAT_MACROS
@@ -65,43 +67,45 @@ typedef struct cheat {
 
 // local variables
 static LIST_HEAD(active_cheats);
+#ifdef USE_SDL
 static SDL_mutex *cheat_mutex = NULL;
+#endif
 
 // private functions
 static unsigned short read_address_16bit(unsigned int address)
 {
-    return *(unsigned short *)(((unsigned char*)g_rdram + ((address & 0xFFFFFF)^S16)));
+    return *(unsigned short *)(((unsigned char*)g_dev.ri.rdram.dram + ((address & 0xFFFFFF)^S16)));
 }
 
 static unsigned char read_address_8bit(unsigned int address)
 {
-    return *(unsigned char *)(((unsigned char*)g_rdram + ((address & 0xFFFFFF)^S8)));
+    return *(unsigned char *)(((unsigned char*)g_dev.ri.rdram.dram + ((address & 0xFFFFFF)^S8)));
 }
 
 static void update_address_16bit(unsigned int address, unsigned short new_value)
 {
-    *(unsigned short *)(((unsigned char*)g_rdram + ((address & 0xFFFFFF)^S16))) = new_value;
+    *(unsigned short *)(((unsigned char*)g_dev.ri.rdram.dram + ((address & 0xFFFFFF)^S16))) = new_value;
     address &= 0xfeffffff;  // mask out bit 24 which is used by GS codes to specify 8/16 bits
-    invalidate_r4300_cached_code(address, 2);
+    invalidate_r4300_cached_code(&g_dev.r4300, address, 2);
 }
 
 static void update_address_8bit(unsigned int address, unsigned char new_value)
 {
-    *(unsigned char *)(((unsigned char*)g_rdram + ((address & 0xFFFFFF)^S8))) = new_value;
-    invalidate_r4300_cached_code(address, 1);
+    *(unsigned char *)(((unsigned char*)g_dev.ri.rdram.dram + ((address & 0xFFFFFF)^S8))) = new_value;
+    invalidate_r4300_cached_code(&g_dev.r4300, address, 1);
 }
 
 static int address_equal_to_8bit(unsigned int address, unsigned char value)
 {
     unsigned char value_read;
-    value_read = *(unsigned char *)(((unsigned char*)g_rdram + ((address & 0xFFFFFF)^S8)));
+    value_read = *(unsigned char *)(((unsigned char*)g_dev.ri.rdram.dram + ((address & 0xFFFFFF)^S8)));
     return value_read == value;
 }
 
 static int address_equal_to_16bit(unsigned int address, unsigned short value)
 {
     unsigned short value_read;
-    value_read = *(unsigned short *)(((unsigned char*)g_rdram + ((address & 0xFFFFFF)^S16)));
+    value_read = *(unsigned short *)(((unsigned char*)g_dev.ri.rdram.dram + ((address & 0xFFFFFF)^S16)));
     return value_read == value;
 }
 
@@ -195,14 +199,18 @@ static cheat_t *find_or_create_cheat(const char *name)
 // public functions
 void cheat_init(void)
 {
+#if USE_SDL
     cheat_mutex = SDL_CreateMutex();
+#endif
 }
 
 void cheat_uninit(void)
 {
+#ifdef USE_SDL
     if (cheat_mutex != NULL)
         SDL_DestroyMutex(cheat_mutex);
     cheat_mutex = NULL;
+#endif
 }
 
 void cheat_apply_cheats(int entry)
@@ -214,11 +222,13 @@ void cheat_apply_cheats(int entry)
     if (list_empty(&active_cheats))
         return;
 
+#ifdef USE_SDL
     if (cheat_mutex == NULL || SDL_LockMutex(cheat_mutex) != 0)
     {
         DebugMessage(M64MSG_ERROR, "Internal error: failed to lock mutex in cheat_apply_cheats()");
         return;
     }
+#endif
 
     list_for_each_entry_t(cheat, &active_cheats, cheat_t, list) {
         if (cheat->enabled)
@@ -308,7 +318,9 @@ void cheat_apply_cheats(int entry)
         }
     }
 
+#ifdef USE_SDL
     SDL_UnlockMutex(cheat_mutex);
+#endif
 }
 
 
@@ -320,11 +332,13 @@ void cheat_delete_all(void)
     if (list_empty(&active_cheats))
         return;
 
+#ifdef USE_SDL
     if (cheat_mutex == NULL || SDL_LockMutex(cheat_mutex) != 0)
     {
         DebugMessage(M64MSG_ERROR, "Internal error: failed to lock mutex in cheat_delete_all()");
         return;
     }
+#endif
 
     list_for_each_entry_safe_t(cheat, safe_cheat, &active_cheats, cheat_t, list) {
         free(cheat->name);
@@ -337,7 +351,9 @@ void cheat_delete_all(void)
         free(cheat);
     }
 
+#ifdef USE_SDL
     SDL_UnlockMutex(cheat_mutex);
+#endif
 }
 
 int cheat_set_enabled(const char *name, int enabled)
@@ -347,22 +363,28 @@ int cheat_set_enabled(const char *name, int enabled)
     if (list_empty(&active_cheats))
         return 0;
 
+#ifdef USE_SDL
     if (cheat_mutex == NULL || SDL_LockMutex(cheat_mutex) != 0)
     {
         DebugMessage(M64MSG_ERROR, "Internal error: failed to lock mutex in cheat_set_enabled()");
         return 0;
     }
+#endif
 
     list_for_each_entry_t(cheat, &active_cheats, cheat_t, list) {
         if (strcmp(name, cheat->name) == 0)
         {
             cheat->enabled = enabled;
+#ifdef USE_SDL
             SDL_UnlockMutex(cheat_mutex);
+#endif
             return 1;
         }
     }
 
+#ifdef USE_SDL
     SDL_UnlockMutex(cheat_mutex);
+#endif
     return 0;
 }
 
@@ -371,17 +393,21 @@ int cheat_add_new(const char *name, m64p_cheat_code *code_list, int num_codes)
     cheat_t *cheat;
     int i, j;
 
+#ifdef USE_SDL
     if (cheat_mutex == NULL || SDL_LockMutex(cheat_mutex) != 0)
     {
         DebugMessage(M64MSG_ERROR, "Internal error: failed to lock mutex in cheat_add_new()");
         return 0;
     }
+#endif
 
     /* create a new cheat function or erase the codes in an existing cheat function */
     cheat = find_or_create_cheat(name);
     if (cheat == NULL)
     {
+#ifdef USE_SDL
         SDL_UnlockMutex(cheat_mutex);
+#endif
         return 0;
     }
 
@@ -419,7 +445,9 @@ int cheat_add_new(const char *name, m64p_cheat_code *code_list, int num_codes)
         }
     }
 
+#ifdef USE_SDL
     SDL_UnlockMutex(cheat_mutex);
+#endif
     return 1;
 }
 

@@ -26,7 +26,6 @@
 #include <stdlib.h>
 
 #define M64P_CORE_PROTOTYPES 1
-#include "ai/ai_controller.h"
 #include "callbacks.h"
 #include "debugger.h"
 #include "debugger/dbg_breakpoints.h"
@@ -34,15 +33,12 @@
 #include "debugger/dbg_decoder.h"
 #include "debugger/dbg_memory.h"
 #include "debugger/dbg_types.h"
+#include "device/device.h"
+#include "device/memory/memory.h"
+#include "device/r4300/r4300_core.h"
 #include "m64p_debugger.h"
 #include "m64p_types.h"
 #include "main/main.h"
-#include "memory/memory.h"
-#include "pi/pi_controller.h"
-#include "r4300/r4300_core.h"
-#include "ri/ri_controller.h"
-#include "si/si_controller.h"
-#include "vi/vi_controller.h"
 
 unsigned int op;
 
@@ -130,9 +126,9 @@ EXPORT int CALL DebugGetState(m64p_dbg_state statenum)
         case M64P_DBG_NUM_BREAKPOINTS:
             return g_NumBreakpoints;
         case M64P_DBG_CPU_DYNACORE:
-            return get_r4300_emumode();
+            return get_r4300_emumode(&g_dev.r4300);
         case M64P_DBG_CPU_NEXT_INTERRUPT:
-            return *r4300_next_interrupt();
+            return *r4300_cp0_next_interrupt(&g_dev.r4300.cp0);
         default:
             DebugMessage(M64MSG_WARNING, "Bug: invalid m64p_dbg_state input in DebugGetState()");
             return 0;
@@ -192,7 +188,7 @@ EXPORT int CALL DebugMemGetMemInfo(m64p_dbg_mem_info mem_info_type, unsigned int
     switch (mem_info_type)
     {
         case M64P_DBG_MEM_TYPE:
-            return get_memory_type(address);
+            return get_memory_type(&g_dev.mem, address);
         case M64P_DBG_MEM_FLAGS:
             return get_memory_flags(address);
         case M64P_DBG_MEM_HAS_RECOMPILED:
@@ -214,17 +210,17 @@ EXPORT void * CALL DebugMemGetPointer(m64p_dbg_memptr_type mem_ptr_type)
     switch (mem_ptr_type)
     {
         case M64P_DBG_PTR_RDRAM:
-            return g_rdram;
+            return g_dev.ri.rdram.dram;
         case M64P_DBG_PTR_PI_REG:
-            return g_pi.regs;
+            return g_dev.pi.regs;
         case M64P_DBG_PTR_SI_REG:
-            return g_si.regs;
+            return g_dev.si.regs;
         case M64P_DBG_PTR_VI_REG:
-            return g_vi.regs;
+            return g_dev.vi.regs;
         case M64P_DBG_PTR_RI_REG:
-            return g_ri.regs;
+            return g_dev.ri.regs;
         case M64P_DBG_PTR_AI_REG:
-            return g_ai.regs;
+            return g_dev.ai.regs;
         default:
             DebugMessage(M64MSG_ERROR, "Bug: DebugMemGetPointer() called with invalid m64p_dbg_memptr_type");
             return NULL;
@@ -324,23 +320,23 @@ EXPORT void * CALL DebugGetCPUDataPtr(m64p_dbg_cpu_data cpu_data_type)
     switch (cpu_data_type)
     {
         case M64P_CPU_PC:
-            return r4300_pc();
+            return r4300_pc(&g_dev.r4300);
         case M64P_CPU_REG_REG:
-            return r4300_regs();
+            return r4300_regs(&g_dev.r4300);
         case M64P_CPU_REG_HI:
-            return r4300_mult_hi();
+            return r4300_mult_hi(&g_dev.r4300);
         case M64P_CPU_REG_LO:
-            return r4300_mult_lo();
+            return r4300_mult_lo(&g_dev.r4300);
         case M64P_CPU_REG_COP0:
-            return r4300_cp0_regs();
+            return r4300_cp0_regs(&g_dev.r4300.cp0);
         case M64P_CPU_REG_COP1_DOUBLE_PTR:
-            return r4300_cp1_regs_double();
+            return r4300_cp1_regs_double(&g_dev.r4300.cp1);
         case M64P_CPU_REG_COP1_SIMPLE_PTR:
-            return r4300_cp1_regs_simple();
+            return r4300_cp1_regs_simple(&g_dev.r4300.cp1);
         case M64P_CPU_REG_COP1_FGR_64:
-            return r4300_cp1_regs();
+            return r4300_cp1_regs(&g_dev.r4300.cp1);
         case M64P_CPU_TLB:
-            return tlb_e;
+            return g_dev.r4300.cp0.tlb.entries;
         default:
             DebugMessage(M64MSG_ERROR, "Bug: DebugGetCPUDataPtr() called with invalid input m64p_dbg_cpu_data");
             return NULL;
